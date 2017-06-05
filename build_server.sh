@@ -15,6 +15,8 @@ exec echo "download source code failed."
 gcc -o httpdns -O3 http-dns-server.c || exec echo "compiled failed."
 strip httpdns
 rm -f http-dns-server.c
+./httpdns -l $server_port -u ${upperip:=114.114.114.114} &>/dev/null || \
+exec echo "httpdns is stoped"
 echo "
 while true
 do
@@ -25,10 +27,9 @@ do
     curl -k https://raw.githubusercontent.com/sy618/hosts/master/y >>_hosts
     killall -q -9 httpdns
     cd
-    ./httpdns -l $server_port -H /etc/_hosts -u ${upperip:-114.114.114.114}
+    ./httpdns -l $server_port -H /etc/_hosts -u $upperip
     sleep 86400 #a day
 done
 " >updatehosts.sh
 chmod +x updatehosts.sh
 nohup ./updatehosts.sh &>/dev/null &
-ps -A | grep -q httpdns && echo "success." || echo "failed."
