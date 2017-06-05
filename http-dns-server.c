@@ -257,9 +257,9 @@ void accept_dns_rsp()
 
     while ((len = read(dstFd, rsp_data, BUFF_SIZE)) > 1)
     {
-        if (rsp_data[0] * 100 + rsp_data[1] > MAX_FD - 3)
+        if (*(int16_t *)rsp_data > MAX_FD - 3)
             continue;
-        dns = &dns_list[rsp_data[0] * 100 + rsp_data[1]];
+        dns = &dns_list[*(int16_t *)rsp_data];
         dns->sent_len = 0;
         if (dns->dns_req_len + 12 > len)
         {
@@ -277,17 +277,7 @@ void accept_dns_rsp()
         /* get ips */
         p = rsp_data + dns->dns_req_len + 11;
         ips_len = 0;
-        ips = NULL;/*
-                int i;
-        printf("[");
-        for (i = 0; i<len; i++)
-        {
-           printf("%d ", rsp_data[i]);
-           if (i == p- rsp_data)
-               printf("______");
-       }
-        puts("]");
-        printf("x%d %d\n", p - rsp_data, len);*/
+        ips = NULL;
         while (p - rsp_data + 4 <= len)
         {
             //type
@@ -601,12 +591,11 @@ int initialize(int argc, char *argv[])
     epoll_ctl(eFd, EPOLL_CTL_ADD, dstFd, &ev);
     memset(dns_list, 0, sizeof(dns_list));
     //初始化DNS请求结构
-    int i;
+    int16_t i;
     for (i = MAX_FD - 2; i--; )
     {
         dns_list[i].fd = -1;
-        dns_list[i].dns_req[0] = (char)(i / 100);
-        dns_list[i].dns_req[1] = (char)(i % 100);
+        memcpy(dns_list[i].dns_req, &i, sizeof(i));
         dns_list[i].dns_req[2] = 1;
         dns_list[i].dns_req[3] = 0;
         dns_list[i].dns_req[4] = 0;
@@ -635,4 +624,4 @@ int main(int argc, char *argv[])
     start_server();
     
     return 0;
-}
+} 
