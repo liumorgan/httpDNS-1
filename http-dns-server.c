@@ -44,7 +44,7 @@ socklen_t addr_len;
 
 void usage(int code)
 {
-    fputs("http dns server(v0.1):\n"
+    fputs("http dns server(v0.2):\n"
     "    -l [listen_ip:]listen_port  \033[35G default listen_ip is 0.0.0.0\n"
     "    -u upper_ip[:upper_port]  \033[35G default upper is 114.114.114.114:53\n"
     "    -H hosts file path  \033[35G default none\n"
@@ -186,12 +186,13 @@ inline void response_client(dns_t *out)
         out->sent_len += write_len;
 }
 
-inline void build_dns_req(dns_t *dns, char *domain, int domain_size)
+inline void build_dns_req(dns_t *dns, char *domain)
 {
     char *p, *_p;
+	unsigned int domain_size = strlen(domain);
 
     p = dns->dns_req + 12;
-    memcpy(p+1, domain, domain_size + 1); //copy '\0'
+    memcpy(p+1, domain, domain_size + 1); //+1我为了复制'\0'
     while ((_p = strchr(p+1, '.')) != NULL)
     {
         *p = _p - p - 1;
@@ -255,19 +256,13 @@ void accept_dns_rsp()
     dns_t *dns;
     int len, ips_len;
 
-    while ((len = read(dstFd, rsp_data, BUFF_SIZE)) > 1)
+    while ((len = read(dstFd, rsp_data, BUFF_SIZE)) > 3)
     {
         if (*(int16_t *)rsp_data > MAX_FD - 3)
             continue;
         dns = &dns_list[*(int16_t *)rsp_data];
         dns->sent_len = 0;
-        if (dns->dns_req_len + 12 > len)
-        {
-            dns->http_rsp = errMsg;
-            dns->http_rsp_len = sizeof(errMsg);
-            goto modEvToOut;
-        }
-        if ((unsigned char)rsp_data[3] != 128) //char只有7位可用，则正数最高为127
+        if (dns->dns_req_len + 12 > len || (unsigned char)rsp_data[3] != 128)
         {
             dns->http_rsp = errMsg;
             dns->http_rsp_len = sizeof(errMsg);
@@ -327,8 +322,8 @@ void accept_dns_rsp()
 
 void read_client(dns_t *in) {
     static char  httpReq[BUFF_SIZE+1];
-    int domain_size, httpReq_len;
-    char *domain_begin, *domain_end, *domain = NULL, *ips;
+    int httpReq_len;
+    char *domain, *domain_end, *ips;
 
     httpReq_len = read(in->fd, httpReq, BUFF_SIZE);
     //必须大于5，否则不处理
@@ -339,10 +334,10 @@ void read_client(dns_t *in) {
     }
     httpReq[httpReq_len] = '\0';
 
-    if ((domain_begin = strstr(httpReq, "?dn=")))
-        domain_begin += 4;
-    else if ((domain_begin = strstr(httpReq, "?host=")))
-        domain_begin += 6;
+    if ((domain = strstr(httpReq, "?dn=")))
+        domain += 4;
+    else if ((domain = strstr(httpReq, "?host=")))
+        domain += 6;
     else
     {
         in->http_rsp = errMsg;
@@ -350,27 +345,19 @@ void read_client(dns_t *in) {
         goto response_client;
     }
 
-    domain_end = strchr(domain_begin, ' ');
+    domain_end = strchr(domain, ' ');
     if (domain_end == NULL)
     {
         in->http_rsp = errMsg;
         in->http_rsp_len = sizeof(errMsg);
         goto response_client;
     }
-    if (*(domain_end - 1) == '.')
-        domain_size = domain_end - domain_begin - 1;
+    if (*(domain_end-1) == '.')
+        *(domain_end-1) = '\0';
     else
-        domain_size = domain_end - domain_begin;
-    domain = strndup(domain_begin, domain_size);
-    if (domain == NULL || domain_size <= 0)
-    {
-        in->http_rsp = errMsg;
-        in->http_rsp_len = sizeof(errMsg);
-        goto response_client;
-    }
+        *domain_end = '\0';
     if (hostsfp && (ips = hosts_lookup(domain)) != NULL)
     {
-        free(domain);
         build_http_rsp(in, ips);
         if (in->http_rsp == NULL)
         {
@@ -380,8 +367,7 @@ void read_client(dns_t *in) {
     }
     else
     {
-        build_dns_req(in, domain, domain_size);
-        free(domain);
+        build_dns_req(in, domain);
         int ret = send_dns_req(in->dns_req, in->dns_req_len);
         switch (ret)
         {
@@ -624,4 +610,4 @@ int main(int argc, char *argv[])
     start_server();
     
     return 0;
-} 
+}
